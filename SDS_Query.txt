@@ -1,0 +1,743 @@
+/****** Script for COO, TP and PO# Pull from PO  ******/
+
+SET NoCount ON
+
+Declare @StartDate
+Declare @EndDate
+
+IF OBJECT_ID('tempdb..#Active9Active6') IS NOT NULL    
+DROP TABLE #Active9Active6 
+
+IF OBJECT_ID('tempdb..#INDC_Reg_season') IS NOT NULL    
+DROP TABLE #INDC_Reg_season
+
+IF OBJECT_ID('tempdb..#INDC_P2M_season') IS NOT NULL
+DROP TABLE #INDC_P2M_season
+
+IF OBJECT_ID('tempdb..#INDC_BR_Summer_Only') IS NOT NULL
+DROP TABLE #INDC_BR_Summer_Only
+
+IF OBJECT_ID('tempdb..#INDCseasonfinal') IS NOT NULL
+DROP TABLE #INDCseasonfinal
+
+/****** Create Master PO Table  ******/ 
+Create table #Active9Active6(
+		[spn_catg_desc] varchar(60)
+	   ,[po_dpo_lvl_nbr] varchar(60)
+	   ,[transfer_point] varchar(60) 
+	   ,[cur_in_dc_dt] date
+	   ,[mdse_cor_id] varchar(30)
+	   ,[mdse_comp_id] varchar(30)
+	   ,[mdse_divs_id] varchar(30)
+	   ,[mdse_dep_id] varchar(30)
+	   ,[mdse_class_id] varchar(30)
+	   ,[mdse_scls_id] varchar(30)
+      ,[gis_brand_name] varchar(60)
+      ,[agnt_dep_desc] varchar(60)
+      ,[ctry_nm] varchar(30)
+      ,[vnd_nm] varchar(30)
+      ,opr_vnd_nbr varchar(60)
+      ,[par_vnd_name] varchar(60)
+      ,[ttl_o_1st_cst_ty] float
+      ,[eelc_ord_current] float
+      ,[ttl_unit_ord_ty] float,)
+      
+INSERT INTO #Active9Active6
+ SELECT
+	   [spn_catg_desc]
+	   ,[po_dpo_lvl_nbr]
+	   ,[transfer_point]
+	   ,[cur_in_dc_dt]
+	   ,[mdse_cor_id]
+	   ,[mdse_comp_id]
+	   ,[mdse_divs_id]
+	   ,[mdse_dep_id]
+	   ,[mdse_class_id]
+	   ,[mdse_scls_id]
+      ,[gis_brand_name]
+      ,[agnt_dep_desc]
+      ,[ctry_nm]
+      ,replace(replace(replace([vnd_nm] , char(10), ' '), char(13), ' '), CHAR(34), ' ')
+      ,opr_vnd_nbr
+      ,replace(replace(replace([par_vnd_name] , char(10), ' '), char(13), ' '), CHAR(34), ' ')
+      ,[ttl_o_1st_cst_ty]
+      ,[eelc_ord_current] 
+      ,[ttl_unit_ord_ty]
+  FROM [SDS].[dbo].[TSDS_PO_ACTIVE9]
+    where cur_in_dc_dt > @StartDate and cur_in_dc_dt < @EndDate
+   Union all
+ Select [spn_catg_desc]
+		,[po_dpo_lvl_nbr]
+	    ,[transfer_point]
+		,[cur_in_dc_dt]
+		,[mdse_cor_id]
+	   ,[mdse_comp_id]
+	   ,[mdse_divs_id]
+	   ,[mdse_dep_id]
+	   ,[mdse_class_id]
+	   ,[mdse_scls_id]
+		,[gis_brand_name]
+		,[agnt_dep_desc]
+		,[ctry_nm]
+      ,replace(replace(replace([vnd_nm] , char(10), ' '), char(13), ' '), CHAR(34), ' ')
+      ,opr_vnd_nbr
+      ,replace(replace(replace([par_vnd_name] , char(10), ' '), char(13), ' '), CHAR(34), ' ')
+		,[ttl_o_1st_cst_ty]
+		,[eelc_ord_current]
+		,[ttl_unit_ord_ty] 
+      from [SDS].[dbo].[TSDS_PO_ACTIVE6]
+        where cur_in_dc_dt > @StartDate and cur_in_dc_dt < @EndDate
+      
+      
+/****** Create table for core brands only (excluding BR for P2M and "Summer Only")  ******/ 
+
+Create table #INDC_Reg_season(
+PO_number varchar(60),
+Transfer_point varchar(60),
+Brand varchar(30),
+Vendor_Name varchar(30),
+Parent_Vendor_Name varchar(60),
+Parent_Vendor_ID varchar(30),
+MDSE_Corp_ID varchar(30),
+MDSE_Corp_Nm varchar(30),
+MDSE_Comp_ID varchar(30),
+MDSE_Comp_Nm varchar(30),
+MDSE_Div_ID varchar(30),
+MDSE_Div_Nm varchar(30),
+MDSE_Dept_ID varchar(30),
+MDSE_Dept_Nm varchar(30),
+MDSE_Class_ID varchar(30),
+MDSE_Class_Nm varchar(30),
+MDSE_Sclass_ID varchar(30),
+MDSE_Sclass_Nm varchar(30),
+Category_ID varchar(30),
+Category_Name varchar(30),
+Sub_category_ID varchar(30),
+Sb_Category_Name varchar(30),
+Total_Category varchar(30),
+aYear integer,
+aSeason varchar(30),
+Country varchar(30),
+Total_ELC float,
+FC float,
+Total_Units float,
+Report_Date datetime,
+)
+
+
+
+INSERT INTO #INDC_Reg_season
+SELECT
+	   x.[po_dpo_lvl_nbr]
+	   ,x.[transfer_point]
+	  ,y.gen3 'Brand'
+	  ,x.vnd_nm
+	  ,replace(replace(max(x.[par_vnd_name]) , char(10), ' '), char(13), ' ') 'Parent Vendor'
+      ,Case
+      when c.par_lgcy_id IS Null then Cast(REPLICATE('0', (9 - LEN(c.vnd_lgcy_id))) as varchar(9)) + cast(c.vnd_lgcy_id as varchar(9)) 
+      else Cast(REPLICATE('0', (9 - LEN(c.[par_lgcy_id]))) as varchar(9)) + cast(c.[par_lgcy_id] as varchar(9)) 
+      end as [par_lgcy_id]
+	  --,c.vnd_lgcy_id 'Parent Vendor ID'
+	  ,d.mdse_corp_id
+	  ,d.mdse_corp_desc
+	  ,d.mdse_comp_id
+	  ,d.mdse_comp_desc
+	  ,d.mdse_div_id
+	  ,d.mdse_div_desc
+	  ,d.mdse_dept_id
+	  ,d.mdse_dept_desc
+	  ,d.mdse_class_id 'Class ID'
+	  ,d.mdse_class_desc 'Class'
+	  ,d.mdse_scls_id 'Sub-clsss ID'
+	  ,d.mdse_scls_desc 'Sub-class'
+	  ,a.catg_id
+	  ,a.catg_nm
+	  ,a.sctg_id
+	  ,a.sctg_nm
+	        ,case
+		when LEFT(x.[agnt_dep_desc], 2) = '3P' then 'Total 3P & Lic'
+		when LEFT(x.[agnt_dep_desc], 2) = 'A_' then 'Total Accessories'
+		when LEFT(x.[agnt_dep_desc], 2) = 'AL' then 'Total IP'
+		when LEFT(x.[agnt_dep_desc], 2) = 'D_' then 'Total Denim and Woven Bottoms'
+		when LEFT(x.[agnt_dep_desc], 2) = 'DW' then 'Total Denim and Woven Bottoms'
+		when LEFT(x.[agnt_dep_desc], 2) = 'I_' then 'Total IP'
+		when LEFT(x.[agnt_dep_desc], 2) = 'K_' then 'Total Knits'
+		when LEFT(x.[agnt_dep_desc], 2) = 'KF' then 'Total Knits'
+		when LEFT(x.[agnt_dep_desc], 2) = 'LC' then 'Total 3P & Lic'
+		when LEFT(x.[agnt_dep_desc], 2) = 'S_' then 'Total Sweaters'	
+		when LEFT(x.[agnt_dep_desc], 2) = 'W_' then 'Total Wovens'
+		else 'Total Category Other'
+		end as ' Total Category'
+	  ,Year(x.[cur_in_dc_dt]) 'aYear'
+		 ,Case
+			When month(x.[cur_in_dc_dt]) in (1,2,3) then 'Spring'
+			when month(x.[cur_in_dc_dt]) in (4, 5, 6) then 'Summer'
+			when month(x.[cur_in_dc_dt]) in (7,8,9) then 'Fall'
+			when month(x.[cur_in_dc_dt]) in (10,11,12) then 'Holiday'
+			end as 'aSeason'
+
+		,x.ctry_nm 'Country'
+			
+      ,sum(x.[eelc_ord_current]) 'Total ELC'
+      ,SUM(x.[ttl_o_1st_cst_ty]) 'FC'
+      ,SUM(x.[ttl_unit_ord_ty]) 'Total Units'
+      ,GETDATE() 'Report Date'
+      
+From (SELECT * FROM #Active9Active6) as x
+   
+   
+   join [SDS].[dbo].[TSDS_MDSE_CATG_MSTR] a
+	   on a.mdse_corp_id = x.mdse_cor_id
+		   and a.mdse_comp_id = x.mdse_comp_id
+		   and a.mdse_div_id = x.mdse_divs_id
+		   and a.mdse_dept_id = x.mdse_dep_id
+		   and a.mdse_class_id = x.mdse_class_id
+		   and a.mdse_scls_id = x.mdse_scls_id
+   
+   join [SDS_CHILD].[dbo].Catg_to_TotCatg b
+		on  a.catg_nm= b.catg_nm
+		
+	   
+   join (Select  [gen3], Substring([gen7],11,2) as 'Corp ID', substring([gen7], 14,1) as 'comp ID', substring([gen7], 16,2) as 'div ID'
+			from [SDS].[dbo].[TSDS_BRND_HIER_FINAL]
+			Group by [gen3], Substring([gen7],11,2), substring([gen7], 14,1), substring([gen7], 16,2)) as y
+		on [corp ID] = x.mdse_cor_id
+		and [comp ID] = x.mdse_comp_id
+		and [div ID] = x.mdse_divs_id
+	   
+   	join (select par_prof_id, par_lgl_nm, vnd_lgcy_id, min([par_lgcy_id]) [par_lgcy_id]
+   		from [SDS].[dbo].[TVND_VND]
+   		group by par_prof_id, par_lgl_nm, vnd_lgcy_id) as c
+			on vnd_lgcy_id = x.[opr_vnd_nbr]
+	
+	join [SDS].[dbo].[TSDS_MDSE_HIER_MSTR] d
+		   on d.mdse_corp_id = x.mdse_cor_id
+		   and d.mdse_comp_id = x.mdse_comp_id
+		   and d.mdse_div_id = x.mdse_divs_id
+		   and d.mdse_dept_id = x.mdse_dep_id
+		   and d.mdse_class_id = x.mdse_class_id
+		   and d.mdse_scls_id = x.mdse_scls_id
+   
+		
+	where  y.gen3 NOT IN ('Brnd PIPERLIME', 'Brnd ATHLETA')
+
+    group by 
+			x.[po_dpo_lvl_nbr]
+			,x.[transfer_point]
+			,y.gen3
+			,x.vnd_nm
+			,x.[par_vnd_name]
+				  ,d.mdse_corp_id
+	  ,d.mdse_corp_desc
+	  ,d.mdse_comp_id
+	  ,d.mdse_comp_desc
+	  ,d.mdse_div_id
+	  ,d.mdse_div_desc
+	  ,d.mdse_dept_id
+	  ,d.mdse_dept_desc
+	  ,d.mdse_class_id
+	  ,d.mdse_class_desc
+	  ,d.mdse_scls_id
+	  ,d.mdse_scls_desc
+	  ,a.catg_id
+	  ,a.catg_nm
+	  ,a.sctg_id
+	  ,a.sctg_nm
+			,c.[par_lgcy_id]
+			,c.vnd_lgcy_id
+			,x.[agnt_dep_desc]
+			,year(x.[cur_in_dc_dt])
+			,Case
+			When month(x.[cur_in_dc_dt]) in (1,2,3) then 'Spring'
+			when month(x.[cur_in_dc_dt]) in (4, 5, 6) then 'Summer'
+			when month(x.[cur_in_dc_dt]) in (7,8,9) then 'Fall'
+			when month(x.[cur_in_dc_dt]) in (10,11,12) then 'Holiday'
+			end
+
+
+			,x.ctry_nm
+    --  order by [par_vnd_name]
+		  --,case 
+				--when left(b.Total_Category, 1) = 'W' then 1
+				--when left(b.Total_Category, 1) = 'D' then 2
+				--when left(b.Total_Category, 1) = 'K' then 3
+				--when left(b.Total_Category, 1) = 'I' then 4
+				--when left(b.Total_Category, 1) = 'S' then 5
+				--when left(b.Total_Category, 1) = 'C' then 6
+				--end asc
+				
+		Delete from #INDC_Reg_season
+	Where Brand = 'Brnd BANANA REPUBLIC'
+	and aYear < (2015)
+				
+	Delete from #INDC_Reg_season
+	Where Brand = 'Brnd BANANA REPUBLIC'
+	and aSeason in ('Spring', 'Summer')
+	and aYear = (2015)
+	
+	--	Select * from #INDC_Reg_season
+	------where aSeason = 'Spring'
+	----------and Brand = 'Brnd BANANA REPUBLIC'
+	--	drop table #INDC_Reg_season
+	
+
+/****** Pull for P2M brands only (including BR up to Summer 2015)  ******/ 	
+
+Create table #INDC_P2M_season(
+PO_number varchar(60),
+Transfer_point varchar(60),
+Brand varchar(30),
+Vendor_Name varchar(30),
+Parent_Vendor_Name varchar(60),
+Parent_Vendor_ID varchar(30),
+MDSE_Corp_ID varchar(30),
+MDSE_Corp_Nm varchar(30),
+MDSE_Comp_ID varchar(30),
+MDSE_Comp_Nm varchar(30),
+MDSE_Div_ID varchar(30),
+MDSE_Div_Nm varchar(30),
+MDSE_Dept_ID varchar(30),
+MDSE_Dept_Nm varchar(30),
+MDSE_Class_ID varchar(30),
+MDSE_Class_Nm varchar(30),
+MDSE_Sclass_ID varchar(30),
+MDSE_Sclass_Nm varchar(30),
+Category_ID varchar(30),
+Category_Name varchar(30),
+Sub_category_ID varchar(30),
+Sb_Category_Name varchar(30),
+Total_Category varchar(30),
+aYear integer,
+aSeason varchar(30),
+Country_Cat varchar(30),
+Total_ELC float,
+FC float,
+Total_Units float,
+Report_Date datetime,
+)
+
+INSERT INTO #INDC_P2M_season
+
+SELECT
+		x.[po_dpo_lvl_nbr]
+	   ,x.[transfer_point]
+	  ,y.gen3 'Brand'
+	  ,x.vnd_nm
+	  ,replace(replace(max(x.[par_vnd_name]) , char(10), ' '), char(13), ' ') 'Parent Vendor'
+      ,Case
+      when c.par_lgcy_id IS Null then Cast(REPLICATE('0', (9 - LEN(c.vnd_lgcy_id))) as varchar(9)) + cast(c.vnd_lgcy_id as varchar(9)) 
+      else Cast(REPLICATE('0', (9 - LEN(c.[par_lgcy_id]))) as varchar(9)) + cast(c.[par_lgcy_id] as varchar(9)) 
+      end as [par_lgcy_id]
+	  --,c.vnd_lgcy_id 'Parent Vendor ID'
+	  ,d.mdse_corp_id
+	  ,d.mdse_corp_desc
+	  ,d.mdse_comp_id
+	  ,d.mdse_comp_desc
+	  ,d.mdse_div_id
+	  ,d.mdse_div_desc
+	  ,d.mdse_dept_id
+	  ,d.mdse_dept_desc
+	  ,d.mdse_class_id 'Class ID'
+	  ,d.mdse_class_desc 'Class'
+	  ,d.mdse_scls_id 'Sub-clsss ID'
+	  ,d.mdse_scls_desc 'Sub-class'
+	  ,a.catg_id
+	  ,a.catg_nm
+	  ,a.sctg_id
+	  ,a.sctg_nm
+	        ,case
+		when LEFT(x.[agnt_dep_desc], 2) = '3P' then 'Total 3P & Lic'
+		when LEFT(x.[agnt_dep_desc], 2) = 'A_' then 'Total Accessories'
+		when LEFT(x.[agnt_dep_desc], 2) = 'AL' then 'Total IP'
+		when LEFT(x.[agnt_dep_desc], 2) = 'D_' then 'Total Denim and Woven Bottoms'
+		when LEFT(x.[agnt_dep_desc], 2) = 'DW' then 'Total Denim and Woven Bottoms'
+		when LEFT(x.[agnt_dep_desc], 2) = 'I_' then 'Total IP'
+		when LEFT(x.[agnt_dep_desc], 2) = 'K_' then 'Total Knits'
+		when LEFT(x.[agnt_dep_desc], 2) = 'KF' then 'Total Knits'
+		when LEFT(x.[agnt_dep_desc], 2) = 'LC' then 'Total 3P & Lic'
+		when LEFT(x.[agnt_dep_desc], 2) = 'S_' then 'Total Sweaters'	
+		when LEFT(x.[agnt_dep_desc], 2) = 'W_' then 'Total Wovens'
+		else 'Total Category Other'
+		end as ' Total Category'
+	  ,Case
+			When month(x.[cur_in_dc_dt]) = 12 then year(x.[cur_in_dc_dt])+1
+			else year(x.[cur_in_dc_dt]) end as 'aYear'
+		 ,Case
+		When month(x.[cur_in_dc_dt]) in (12, 1, 2) then 'Spring'
+		when month(x.[cur_in_dc_dt]) in (3, 4, 5) then 'Summer'
+		when month(x.[cur_in_dc_dt]) in (6, 7, 8) then 'Fall'
+		when month(x.[cur_in_dc_dt]) in (9, 10,11) then 'Holiday'
+			end as 'aSeason'
+
+		,x.ctry_nm 'Country'
+			
+      ,sum(x.[eelc_ord_current]) 'Total ELC'
+      ,SUM(x.[ttl_o_1st_cst_ty]) 'FC'
+      ,SUM(x.[ttl_unit_ord_ty]) 'Total Units'
+      ,GETDATE() 'Report Date'
+      
+From (SELECT * FROM #Active9Active6) as x
+   
+   
+   join [SDS].[dbo].[TSDS_MDSE_CATG_MSTR] a
+	   on a.mdse_corp_id = x.mdse_cor_id
+		   and a.mdse_comp_id = x.mdse_comp_id
+		   and a.mdse_div_id = x.mdse_divs_id
+		   and a.mdse_dept_id = x.mdse_dep_id
+		   and a.mdse_class_id = x.mdse_class_id
+		   and a.mdse_scls_id = x.mdse_scls_id
+   
+   join [SDS_CHILD].[dbo].Catg_to_TotCatg b
+		on  a.catg_nm= b.catg_nm
+	   
+   join (Select  [gen3], Substring([gen7],11,2) as 'Corp ID', substring([gen7], 14,1) as 'comp ID', substring([gen7], 16,2) as 'div ID'
+			from [SDS].[dbo].[TSDS_BRND_HIER_FINAL]
+			Group by [gen3], Substring([gen7],11,2), substring([gen7], 14,1), substring([gen7], 16,2)) as y
+		on [corp ID] = x.mdse_cor_id
+		and [comp ID] = x.mdse_comp_id
+		and [div ID] = x.mdse_divs_id
+	   
+   	join (select par_prof_id, par_lgl_nm, vnd_lgcy_id, min([par_lgcy_id]) [par_lgcy_id]
+   		from [SDS].[dbo].[TVND_VND]
+   		group by par_prof_id, par_lgl_nm,vnd_lgcy_id) as c
+			on vnd_lgcy_id = x.[opr_vnd_nbr]
+			
+	join [SDS].[dbo].[TSDS_MDSE_HIER_MSTR] d
+	   on d.mdse_corp_id = x.mdse_cor_id
+	   and d.mdse_comp_id = x.mdse_comp_id
+	   and d.mdse_div_id = x.mdse_divs_id
+	   and d.mdse_dept_id = x.mdse_dep_id
+	   and d.mdse_class_id = x.mdse_class_id
+	   and d.mdse_scls_id = x.mdse_scls_id
+	
+	--where  y.gen3 IN ('Brnd BANANA REPUBLIC', 'Brnd PIPERLIME', 'Brnd ATHLETA')
+	where  y.gen3 NOT IN ('Brnd GAP', 'Brnd OLD NAVY', 'Brnd GO', 'Brnd BRFS')
+   
+    group by 
+			x.[po_dpo_lvl_nbr]
+			 ,x.[transfer_point]
+			,y.gen3
+			,x.vnd_nm
+			,x.[par_vnd_name]
+				  ,d.mdse_corp_id
+	  ,d.mdse_corp_desc
+	  ,d.mdse_comp_id
+	  ,d.mdse_comp_desc
+	  ,d.mdse_div_id
+	  ,d.mdse_div_desc
+	  ,d.mdse_dept_id
+	  ,d.mdse_dept_desc
+	  ,d.mdse_class_id
+	  ,d.mdse_class_desc
+	  ,d.mdse_scls_id
+	  ,d.mdse_scls_desc
+	  ,a.catg_id
+	  ,a.catg_nm
+	  ,a.sctg_id
+	  ,a.sctg_nm
+			,c.vnd_lgcy_id
+			,c.[par_lgcy_id] 
+			,x.[agnt_dep_desc]
+			,Case
+				When month(x.[cur_in_dc_dt]) = 12 then year(x.[cur_in_dc_dt])+1
+				else year(x.[cur_in_dc_dt]) end
+			,Case
+				When month(x.[cur_in_dc_dt]) in (12, 1, 2) then 'Spring'
+				when month(x.[cur_in_dc_dt]) in (3, 4, 5) then 'Summer'
+				when month(x.[cur_in_dc_dt]) in (6, 7, 8) then 'Fall'
+				when month(x.[cur_in_dc_dt]) in (9, 10,11) then 'Holiday'
+			end
+			,x.ctry_nm
+	
+    --  order by [par_vnd_name]
+		  --,case 
+				--when left(b.Total_Category, 1) = 'W' then 1
+				--when left(b.Total_Category, 1) = 'D' then 2
+				--when left(b.Total_Category, 1) = 'K' then 3
+				--when left(b.Total_Category, 1) = 'I' then 4
+				--when left(b.Total_Category, 1) = 'S' then 5
+				--when left(b.Total_Category, 1) = 'C' then 6
+				--end asc
+				
+	Delete from #INDC_P2M_season
+	Where Brand = 'Brnd BANANA REPUBLIC'
+	and aSeason in ('Fall', 'Holiday')
+	and aYear >= (2015)
+	
+	Delete from #INDC_P2M_season
+	Where Brand = 'Brnd BANANA REPUBLIC'
+	and aSeason in ('Spring')
+	and aYear > (2015)
+	
+	Delete from #INDC_P2M_season
+	Where Brand = 'Brnd BANANA REPUBLIC'
+	and aSeason in ('Summer')
+	and aYear >= (2015)
+	
+	--Select * from #INDC_P2M_season
+	--where aSeason = 'Spring'
+	----and Brand = 'Brnd BANANA REPUBLIC'
+	
+	--drop table #INDC_P2M_season
+	
+	
+/****** Pull for BR for Summer 2015 only  ******/ 	
+
+Create table #INDC_BR_Summer_Only(
+PO_number varchar(60),
+Transfer_point varchar(60),
+Brand varchar(30),
+Vendor_Name varchar(30),
+Parent_Vendor_Name varchar(60),
+Parent_Vendor_ID varchar(30),
+MDSE_Corp_ID varchar(30),
+MDSE_Corp_Nm varchar(30),
+MDSE_Comp_ID varchar(30),
+MDSE_Comp_Nm varchar(30),
+MDSE_Div_ID varchar(30),
+MDSE_Div_Nm varchar(30),
+MDSE_Dept_ID varchar(30),
+MDSE_Dept_Nm varchar(30),
+MDSE_Class_ID varchar(30),
+MDSE_Class_Nm varchar(30),
+MDSE_Sclass_ID varchar(30),
+MDSE_Sclass_Nm varchar(30),
+Category_ID varchar(30),
+Category_Name varchar(30),
+Sub_category_ID varchar(30),
+Sb_Category_Name varchar(30),
+Total_Category varchar(30),
+aYear integer,
+aSeason varchar(30),
+Country varchar(30),
+Total_ELC float,
+FC float,
+Total_Units float,
+Report_Date datetime,
+)
+
+INSERT INTO #INDC_BR_Summer_Only
+
+SELECT
+		x.[po_dpo_lvl_nbr]
+	   ,x.[transfer_point]
+	  ,y.gen3 'Brand'
+	  ,x.vnd_nm
+	  ,replace(replace(max(x.[par_vnd_name]) , char(10), ' '), char(13), ' ') 'Parent Vendor'
+      ,Case
+      when c.par_lgcy_id IS Null then Cast(REPLICATE('0', (9 - LEN(c.vnd_lgcy_id))) as varchar(9)) + cast(c.vnd_lgcy_id as varchar(9)) 
+      else Cast(REPLICATE('0', (9 - LEN(c.[par_lgcy_id]))) as varchar(9)) + cast(c.[par_lgcy_id] as varchar(9)) 
+      end as [par_lgcy_id]
+      
+	  --,c.vnd_lgcy_id 'Parent Vendor ID'
+	  ,d.mdse_corp_id
+	  ,d.mdse_corp_desc
+	  ,d.mdse_comp_id
+	  ,d.mdse_comp_desc
+	  ,d.mdse_div_id
+	  ,d.mdse_div_desc
+	  ,d.mdse_dept_id
+	  ,d.mdse_dept_desc
+	  ,d.mdse_class_id 'Class ID'
+	  ,d.mdse_class_desc 'Class'
+	  ,d.mdse_scls_id 'Sub-clsss ID'
+	  ,d.mdse_scls_desc 'Sub-class'
+	  ,a.catg_id
+	  ,a.catg_nm
+	  ,a.sctg_id
+	  ,a.sctg_nm
+	        ,case
+		when LEFT(x.[agnt_dep_desc], 2) = '3P' then 'Total 3P & Lic'
+		when LEFT(x.[agnt_dep_desc], 2) = 'A_' then 'Total Accessories'
+		when LEFT(x.[agnt_dep_desc], 2) = 'AL' then 'Total IP'
+		when LEFT(x.[agnt_dep_desc], 2) = 'D_' then 'Total Denim and Woven Bottoms'
+		when LEFT(x.[agnt_dep_desc], 2) = 'DW' then 'Total Denim and Woven Bottoms'
+		when LEFT(x.[agnt_dep_desc], 2) = 'I_' then 'Total IP'
+		when LEFT(x.[agnt_dep_desc], 2) = 'K_' then 'Total Knits'
+		when LEFT(x.[agnt_dep_desc], 2) = 'KF' then 'Total Knits'
+		when LEFT(x.[agnt_dep_desc], 2) = 'LC' then 'Total 3P & Lic'
+		when LEFT(x.[agnt_dep_desc], 2) = 'S_' then 'Total Sweaters'	
+		when LEFT(x.[agnt_dep_desc], 2) = 'W_' then 'Total Wovens'
+		else 'Total Category Other'
+		end as ' Total Category'
+	  ,Year(x.[cur_in_dc_dt]) 'aYear'
+		 ,Case
+		--When month(x.[cur_in_dc_dt]) in (12, 1, 2) then 'Spring'
+		when month(x.[cur_in_dc_dt]) in (3, 4, 5, 6) then 'Summer'
+		--when month(x.[cur_in_dc_dt]) in (7, 8) then 'Fall'
+		--when month(x.[cur_in_dc_dt]) in (9, 10,11) then 'Holiday'
+			end as 'aSeason'
+
+		,x.ctry_nm 'Country'
+			
+      ,sum(x.[eelc_ord_current]) 'Total ELC'
+      ,SUM(x.[ttl_o_1st_cst_ty]) 'FC'
+      ,SUM(x.[ttl_unit_ord_ty]) 'Total Units'
+      ,GETDATE() 'Report Date'
+      
+From (SELECT * FROM #Active9Active6) as x
+   
+   
+   join [SDS].[dbo].[TSDS_MDSE_CATG_MSTR] a
+	   on a.mdse_corp_id = x.mdse_cor_id
+		   and a.mdse_comp_id = x.mdse_comp_id
+		   and a.mdse_div_id = x.mdse_divs_id
+		   and a.mdse_dept_id = x.mdse_dep_id
+		   and a.mdse_class_id = x.mdse_class_id
+		   and a.mdse_scls_id = x.mdse_scls_id
+   
+   join [SDS_CHILD].[dbo].Catg_to_TotCatg b
+		on  a.catg_nm= b.catg_nm
+	   
+   join (Select  [gen3], Substring([gen7],11,2) as 'Corp ID', substring([gen7], 14,1) as 'comp ID', substring([gen7], 16,2) as 'div ID'
+			from [SDS].[dbo].[TSDS_BRND_HIER_FINAL]
+			Group by [gen3], Substring([gen7],11,2), substring([gen7], 14,1), substring([gen7], 16,2)) as y
+		on [corp ID] = x.mdse_cor_id
+		and [comp ID] = x.mdse_comp_id
+		and [div ID] = x.mdse_divs_id
+	   
+   	join (select par_prof_id, par_lgl_nm, vnd_lgcy_id, min([par_lgcy_id]) [par_lgcy_id]
+   		from [SDS].[dbo].[TVND_VND]
+   		group by par_prof_id, par_lgl_nm,vnd_lgcy_id) as c
+			on vnd_lgcy_id = x.[opr_vnd_nbr]
+			
+	join [SDS].[dbo].[TSDS_MDSE_HIER_MSTR] d
+		   on d.mdse_corp_id = x.mdse_cor_id
+	   and d.mdse_comp_id = x.mdse_comp_id
+	   and d.mdse_div_id = x.mdse_divs_id
+	   and d.mdse_dept_id = x.mdse_dep_id
+	   and d.mdse_class_id = x.mdse_class_id
+	   and d.mdse_scls_id = x.mdse_scls_id
+		
+	where  y.gen3 IN ('Brnd BANANA REPUBLIC')
+		and month(x.[cur_in_dc_dt]) not in (1,2,7, 8, 9, 10, 11, 12)
+   
+    group by 
+			x.[po_dpo_lvl_nbr]
+			,x.[transfer_point]
+			,y.gen3
+			,x.vnd_nm
+			,x.[par_vnd_name]
+			,d.mdse_corp_id
+		  ,d.mdse_corp_desc
+		  ,d.mdse_comp_id
+		  ,d.mdse_comp_desc
+		  ,d.mdse_div_id
+		  ,d.mdse_div_desc
+		  ,d.mdse_dept_id
+		  ,d.mdse_dept_desc
+		  ,d.mdse_class_id
+		  ,d.mdse_class_desc
+		  ,d.mdse_scls_id
+		  ,d.mdse_scls_desc
+		  ,a.catg_id
+		  ,a.catg_nm
+		  ,a.sctg_id
+		  ,a.sctg_nm
+		  ,c.vnd_lgcy_id
+		,c.[par_lgcy_id]
+		,x.[agnt_dep_desc]
+		,year(x.[cur_in_dc_dt])
+		,Case
+		--When month(x.[cur_in_dc_dt]) in (12, 1, 2) then 'Spring'
+		when month(x.[cur_in_dc_dt]) in (3, 4, 5, 6) then 'Summer'
+		--when month(x.[cur_in_dc_dt]) in (7, 8) then 'Fall'
+		--when month(x.[cur_in_dc_dt]) in (9, 10,11) then 'Holiday'
+			end
+			
+			--,Case
+			--	when left(x.ctry_nm,10)  = 'UNITED STA' then 'United States'
+			--	when left(x.ctry_nm,10)  = 'BANGLADESH' then 'Bangladesh'
+			--	when left(x.ctry_nm,10)  = 'CAMBODIA' then 'Cambodia'
+			--	when left(x.ctry_nm,10)  = 'CHINA' then 'China'
+			--	when left(x.ctry_nm,10)  = 'INDIA' then 'India'
+			--	when left(x.ctry_nm,10)  = 'INDONESIA' then 'Indonesia'
+			--	when left(x.ctry_nm,10)  = 'VIET NAM' then 'Vietnam'
+			--else 'Other' end
+			,x.ctry_nm
+	
+    --  order by [par_vnd_name]
+		  --,case 
+				--when left(b.Total_Category, 1) = 'W' then 1
+				--when left(b.Total_Category, 1) = 'D' then 2
+				--when left(b.Total_Category, 1) = 'K' then 3
+				--when left(b.Total_Category, 1) = 'I' then 4
+				--when left(b.Total_Category, 1) = 'S' then 5
+				--when left(b.Total_Category, 1) = 'C' then 6
+				--end asc
+				
+	Delete from #INDC_BR_Summer_Only
+	where aYear <> 2015
+	
+	--	Select * from #INDC_BR_Summer_Only
+	----where aSeason = 'Spring'
+	--------and Brand = 'Brnd BANANA REPUBLIC'
+	
+	--drop table #INDC_BR_Summer_Only
+	
+/****** Create final table  ******/ 	
+
+
+Create table #INDCseasonfinal(
+PO_number varchar(60),
+Transfer_point varchar(60),
+Brand varchar(30),
+Vendor_Name varchar(30),
+Parent_Vendor_Name varchar(60),
+Parent_Vendor_ID varchar(30),
+MDSE_Corp_ID varchar(30),
+MDSE_Corp_Nm varchar(30),
+MDSE_Comp_ID varchar(30),
+MDSE_Comp_Nm varchar(30),
+MDSE_Div_ID varchar(30),
+MDSE_Div_Nm varchar(30),
+MDSE_Dept_ID varchar(30),
+MDSE_Dept_Nm varchar(30),
+MDSE_Class_ID varchar(30),
+MDSE_Class_Nm varchar(30),
+MDSE_Sclass_ID varchar(30),
+MDSE_Sclass_Nm varchar(30),
+Category_ID varchar(30),
+Category_Name varchar(30),
+Sub_category_ID varchar(30),
+Sb_Category_Name varchar(30),
+Total_Category varchar(30),
+aYear varchar(30),
+aSeason varchar(30),
+Country varchar(30),
+Total_ELC float,
+FC float,
+Total_Units float,
+Report_Date datetime,
+)
+
+/****** Union all ******/ 		
+
+
+INSERT INTO #INDCseasonfinal				
+SELECT * FROM #INDC_Reg_season
+UNION ALL
+SELECT * FROM #INDC_P2M_season
+UNION ALL
+SELECT * FROM #INDC_BR_Summer_Only
+
+--SELECT * FROM #INDCseasonfinal 
+--      order by [Parent_Vendor_Name]
+--		  ,case 
+--				when left(Total_Category, 1) = 'W' then 1
+--				when left(Total_Category, 1) = 'D' then 2
+--				when left(Total_Category, 1) = 'K' then 3
+--				when left(Total_Category, 1) = 'I' then 4
+--				when left(Total_Category, 1) = 'S' then 5
+--				when left(Total_Category, 1) = 'C' then 6
+--				end asc
+
+SELECT * FROM #INDCseasonfinal 
+--where aYear = 2015
+--group by aYear
+
+DROP TABLE #INDC_Reg_season
+DROP TABLE #INDC_P2M_season
+DROP TABLE #INDC_BR_Summer_Only
+DROP TABLE #INDCseasonfinal
+DROP TABLE #Active9Active6
